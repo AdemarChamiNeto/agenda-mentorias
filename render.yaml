@@ -1,0 +1,15 @@
+# Blueprint do Render: New + → Blueprint → escolha este repositório.
+services:
+  - type: web
+    name: agenda-mentorias
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /saude
+    envVars:
+      - key: DATABASE_URL
+        sync: false # connection string DIRETA do projeto Neon só desta API (sem "-pooler"), com ?sslmode=require
+      - key: JWT_SECRET # assina os tokens de sessão do mentor
+        generateValue: true
+      - key: ENCRYPTION_KEY # cifra o segredo do 2FA (32 bytes em base64); se trocar, os 2FA já ativados param de abrir
+        generateValue: true

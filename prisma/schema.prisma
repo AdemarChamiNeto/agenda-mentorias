@@ -1,0 +1,136 @@
+// Agenda de mentorias. Decisões em docs/banco.md.
+// O que o Prisma não sabe declarar (exclusion constraints e CHECKs) está em SQL na migração inicial.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Mentor {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                String
+  /// guardado em minúsculas (a aplicação normaliza): o UNIQUE vale para "Ana@x" e "ana@x"
+  email               String    @unique
+  bio                 String    @default("")
+  /// fuso em que a agenda semanal é lida (os horários vão para o banco em UTC)
+  fuso                String    @default("America/Sao_Paulo")
+  duracaoMinutos      Int       @default(60) @map("duracao_minutos")
+  antecedenciaMinutos Int       @default(120) @map("antecedencia_minutos")
+  /// conta de demonstração: some sozinha nesta data (com tudo o que tiver)
+  demoExpiraEm        DateTime? @map("demo_expira_em") @db.Timestamptz(6)
+  criadoEm            DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm        DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  credencial        Credencial?
+  codigos           CodigoRecuperacao[]
+  disponibilidades  Disponibilidade[]
+  bloqueios         Bloqueio[]
+  marcacoes         Marcacao[]
+
+  @@map("mentores")
+}
+
+/// Senha e 2FA separados do perfil (regra fixa do roteiro): consulta de perfil nunca traz hash nem segredo.
+model Credencial {
+  /// CASCADE: a credencial não existe sem o mentor
+  mentorId        String    @id @map("mentor_id") @db.Uuid
+  mentor          Mentor    @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  senhaHash       String    @map("senha_hash")
+  /// segredo TOTP cifrado com AES-256-GCM
+  totpSegredo     String?   @map("totp_segredo")
+  totpAtivadoEm   DateTime? @map("totp_ativado_em") @db.Timestamptz(6)
+  /// último passo de 30 s aceito: o mesmo código não serve duas vezes
+  totpUltimoPasso Int?      @map("totp_ultimo_passo")
+  atualizadoEm    DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  @@map("credenciais")
+}
+
+model CodigoRecuperacao {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CASCADE: código de recuperação não existe sem o mentor
+  mentorId   String    @map("mentor_id") @db.Uuid
+  mentor     Mentor    @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  /// SHA-256 (código aleatório e longo não precisa do custo do bcrypt)
+  codigoHash String    @map("codigo_hash")
+  usadoEm    DateTime? @map("usado_em") @db.Timestamptz(6)
+
+  @@unique([mentorId, codigoHash])
+  @@map("codigos_recuperacao")
+}
+
+/// Janela semanal de atendimento, em minutos desde a meia-noite no fuso do mentor (ex.: seg 09:00–12:00 = 1, 540, 720).
+model Disponibilidade {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CASCADE: a agenda do mentor some com ele
+  mentorId  String @map("mentor_id") @db.Uuid
+  mentor    Mentor @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  /// 1 = segunda ... 7 = domingo (ISO)
+  diaSemana Int    @map("dia_semana")
+  inicioMin Int    @map("inicio_min")
+  fimMin    Int    @map("fim_min")
+
+  @@index([mentorId])
+  @@map("disponibilidades")
+}
+
+/// Folga, férias ou compromisso: nenhum horário livre dentro do intervalo.
+model Bloqueio {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CASCADE: o bloqueio é do mentor
+  mentorId String   @map("mentor_id") @db.Uuid
+  mentor   Mentor   @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  inicio   DateTime @db.Timestamptz(6)
+  fim      DateTime @db.Timestamptz(6)
+  motivo   String   @default("")
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  @@index([mentorId, inicio])
+  @@map("bloqueios")
+}
+
+enum StatusMarcacao {
+  CONFIRMADA
+  CANCELADA
+}
+
+model Marcacao {
+  id                    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CASCADE: só some com o mentor, o que só acontece com contas de demonstração vencidas
+  mentorId              String         @map("mentor_id") @db.Uuid
+  mentor                Mentor         @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  /// dado pessoal: vira "anonimizado" 30 dias depois do horário (limpeza de hora em hora)
+  alunoNome             String         @map("aluno_nome")
+  alunoEmail            String         @map("aluno_email")
+  inicio                DateTime       @db.Timestamptz(6)
+  fim                   DateTime       @db.Timestamptz(6)
+  status                StatusMarcacao @default(CONFIRMADA)
+  /// o aluno cancela com este código, que só ele recebe; aqui fica só o SHA-256
+  codigoCancelamentoHash String        @unique @map("codigo_cancelamento_hash")
+  /// Idempotency-Key do pedido: clique duplo devolve a mesma marcação
+  chaveIdempotencia     String?        @map("chave_idempotencia")
+  canceladaEm           DateTime?      @map("cancelada_em") @db.Timestamptz(6)
+  canceladaPor          String?        @map("cancelada_por")
+  anonimizadaEm         DateTime?      @map("anonimizada_em") @db.Timestamptz(6)
+  criadoEm              DateTime       @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  @@unique([mentorId, chaveIdempotencia])
+  @@index([mentorId, inicio])
+  @@index([alunoEmail, inicio])
+  @@map("marcacoes")
+}
+
+/// Cache dos feriados nacionais da BrasilAPI: a API externa é chamada uma vez por ano.
+model Feriado {
+  data DateTime @id @db.Date
+  ano  Int
+  nome String
+
+  @@index([ano])
+  @@map("feriados")
+}
