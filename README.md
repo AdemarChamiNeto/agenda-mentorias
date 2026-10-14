@@ -2,7 +2,7 @@
 
 API de agendamento de mentorias: o mentor publica a agenda da semana, o aluno vê os horários livres (sem feriados e bloqueios) e marca sem criar conta. Para cancelar, usa o código que recebeu na marcação.
 
-**Documentação interativa (Swagger):** `/docs` no servidor. Para testar sem cadastro, `POST /auth/demo` cria uma conta de mentor de 24 h já com agenda.
+**Demo (Swagger):** [agenda-mentorias.onrender.com/docs](https://agenda-mentorias.onrender.com/docs). Para testar a área do mentor sem cadastro, `POST /auth/demo` cria uma conta de 24 h já com agenda; cole o token em **Authorize**. O plano grátis do Render dorme sem visitas, e a primeira leva uns 30 s para acordar.
 
 <p>
   <img src="docs/rotas.png" width="49%" alt="Swagger com as 20 rotas: saúde, público (mentores, horários, marcar, cancelar), área do mentor e autenticação com 2FA">
