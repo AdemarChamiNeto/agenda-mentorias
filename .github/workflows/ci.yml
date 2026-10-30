@@ -24,7 +24,7 @@ jobs:
       DATABASE_URL: postgresql://agenda:agenda-dev@localhost:5432/agenda_test
       DATABASE_URL_TESTE: postgresql://agenda:agenda-dev@localhost:5432/agenda_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Papel e bancos (docker/init.sql)
         run: PGPASSWORD=postgres-ci psql -h localhost -U postgres -f docker/init.sql
       - uses: actions/setup-node@v7
@@ -42,5 +42,5 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t agenda-mentorias .
