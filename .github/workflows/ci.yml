@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Papel e bancos (docker/init.sql)
         run: PGPASSWORD=postgres-ci psql -h localhost -U postgres -f docker/init.sql
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
